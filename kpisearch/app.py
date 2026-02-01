@@ -1,7 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
+import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -71,6 +73,42 @@ def search(
     ]
 
     return SearchResponse(query=q, results=results)
+
+
+class KoladaKpiResult(BaseModel):
+    id: str
+    title: str
+    description: str
+
+
+class KoladaSearchResponse(BaseModel):
+    query: str
+    results: list[KoladaKpiResult]
+
+
+@app.get('/api/kolada-search', response_model=KoladaSearchResponse)
+async def kolada_search(
+    q: str = Query(..., min_length=1, description='Search query'),
+    limit: int = Query(15, ge=1, le=50, description='Max results'),
+) -> KoladaSearchResponse:
+    """Proxy search to Kolada API for comparison."""
+    url = f'https://api.kolada.se/v3/kpi?title={quote(q)}'
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+
+    results = [
+        KoladaKpiResult(
+            id=kpi['id'],
+            title=kpi.get('title', ''),
+            description=kpi.get('description', ''),
+        )
+        for kpi in data.get('values', [])[:limit]
+    ]
+
+    return KoladaSearchResponse(query=q, results=results)
 
 
 # Admin API models

@@ -11,7 +11,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 800px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
             background: #f5f5f5;
@@ -62,49 +62,95 @@
             cursor: not-allowed;
         }
 
+        .comparison-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .comparison-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .results-column {
+            min-width: 0;
+        }
+
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .column-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .column-subtitle {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
         .results {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.75rem;
         }
 
         .result-card {
             background: white;
             border-radius: 8px;
-            padding: 1.25rem;
+            padding: 1rem;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .result-card.highlight {
+            border-left: 3px solid #0066cc;
         }
 
         .result-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            gap: 1rem;
-            margin-bottom: 0.5rem;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
         }
 
         .result-id {
             font-family: monospace;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: #666;
             background: #f0f0f0;
-            padding: 0.2rem 0.5rem;
+            padding: 0.15rem 0.4rem;
             border-radius: 4px;
         }
 
+        .result-rank {
+            font-size: 0.8rem;
+            color: #999;
+            font-weight: 500;
+        }
+
         .result-score {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: #666;
             white-space: nowrap;
         }
 
         .score-bar {
             display: inline-block;
-            width: 60px;
-            height: 6px;
+            width: 50px;
+            height: 5px;
             background: #e0e0e0;
             border-radius: 3px;
-            margin-left: 0.5rem;
+            margin-left: 0.4rem;
             vertical-align: middle;
         }
 
@@ -116,16 +162,17 @@
         }
 
         .result-title {
-            font-size: 1.1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             color: #1a1a1a;
-            margin: 0.5rem 0;
+            margin: 0.4rem 0;
+            line-height: 1.3;
         }
 
         .result-description {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             color: #555;
-            line-height: 1.5;
+            line-height: 1.4;
         }
 
         .loading {
@@ -136,7 +183,7 @@
 
         .no-results {
             text-align: center;
-            padding: 2rem;
+            padding: 1.5rem;
             color: #666;
             background: white;
             border-radius: 8px;
@@ -147,7 +194,25 @@
             color: #c00;
             padding: 1rem;
             border-radius: 6px;
-            margin-bottom: 1rem;
+        }
+
+        .match-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+
+        .match-badge.in-both {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .match-badge.unique {
+            background: #fff3cd;
+            color: #856404;
         }
     </style>
 </head>
@@ -167,60 +232,142 @@
         <button id="search-button">Sök</button>
     </div>
 
-    <div id="results"></div>
+    <div class="comparison-container">
+        <div class="results-column">
+            <div class="column-header">
+                <div>
+                    <div class="column-title">Vektorsökning (semantisk)</div>
+                    <div class="column-subtitle">Hittar betydelsemässigt liknande resultat</div>
+                </div>
+            </div>
+            <div id="vector-results"></div>
+        </div>
+        <div class="results-column">
+            <div class="column-header">
+                <div>
+                    <div class="column-title">Kolada API (titelsökning)</div>
+                    <div class="column-subtitle">Standardsökning i Koladas API</div>
+                </div>
+            </div>
+            <div id="kolada-results"></div>
+        </div>
+    </div>
 
     <script>
         const searchInput = document.getElementById('search-input');
         const searchButton = document.getElementById('search-button');
-        const resultsContainer = document.getElementById('results');
+        const vectorResults = document.getElementById('vector-results');
+        const koladaResults = document.getElementById('kolada-results');
 
         async function search() {
             const query = searchInput.value.trim();
             if (!query) return;
 
             searchButton.disabled = true;
-            resultsContainer.innerHTML = '<div class="loading">Söker...</div>';
+            vectorResults.innerHTML = '<div class="loading">Söker...</div>';
+            koladaResults.innerHTML = '<div class="loading">Söker...</div>';
 
-            try {
-                const params = new URLSearchParams({ q: query, limit: 15, min_score: 0.4 });
-                const response = await fetch(`/api/search?${params}`);
+            const params = new URLSearchParams({ q: query, limit: 15 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+            // Fetch both in parallel
+            const [vectorResponse, koladaResponse] = await Promise.allSettled([
+                fetch(`/api/search?${params}&min_score=0.3`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+                fetch(`/api/kolada-search?${params}`).then(r => r.ok ? r.json() : Promise.reject(r.status))
+            ]);
 
-                const data = await response.json();
-                renderResults(data);
-            } catch (error) {
-                resultsContainer.innerHTML = `<div class="error">Fel vid sökning: ${error.message}</div>`;
-            } finally {
-                searchButton.disabled = false;
+            // Get IDs from both result sets for comparison
+            const vectorIds = new Set(
+                vectorResponse.status === 'fulfilled'
+                    ? vectorResponse.value.results.map(r => r.id)
+                    : []
+            );
+            const koladaIds = new Set(
+                koladaResponse.status === 'fulfilled'
+                    ? koladaResponse.value.results.map(r => r.id)
+                    : []
+            );
+
+            // Render vector results
+            if (vectorResponse.status === 'fulfilled') {
+                renderVectorResults(vectorResponse.value, koladaIds);
+            } else {
+                vectorResults.innerHTML = `<div class="error">Fel: ${vectorResponse.reason}</div>`;
             }
+
+            // Render Kolada results
+            if (koladaResponse.status === 'fulfilled') {
+                renderKoladaResults(koladaResponse.value, vectorIds);
+            } else {
+                koladaResults.innerHTML = `<div class="error">Fel: ${koladaResponse.reason}</div>`;
+            }
+
+            searchButton.disabled = false;
         }
 
-        function renderResults(data) {
+        function renderVectorResults(data, koladaIds) {
             if (data.results.length === 0) {
-                resultsContainer.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
+                vectorResults.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
                 return;
             }
 
-            const html = data.results.map(result => `
-                <div class="result-card">
-                    <div class="result-header">
-                        <span class="result-id">${escapeHtml(result.id)}</span>
-                        <span class="result-score">
-                            ${(result.score * 100).toFixed(0)}%
-                            <span class="score-bar">
-                                <span class="score-fill" style="width: ${result.score * 100}%"></span>
-                            </span>
-                        </span>
-                    </div>
-                    <div class="result-title">${escapeHtml(result.title)}</div>
-                    <div class="result-description">${escapeHtml(result.description)}</div>
-                </div>
-            `).join('');
+            const html = data.results.map((result, index) => {
+                const inBoth = koladaIds.has(result.id);
+                const badge = inBoth
+                    ? '<span class="match-badge in-both">finns i båda</span>'
+                    : '<span class="match-badge unique">unik</span>';
 
-            resultsContainer.innerHTML = `<div class="results">${html}</div>`;
+                return `
+                    <div class="result-card ${inBoth ? 'highlight' : ''}">
+                        <div class="result-header">
+                            <span>
+                                <span class="result-rank">#${index + 1}</span>
+                                <span class="result-id">${escapeHtml(result.id)}</span>
+                                ${badge}
+                            </span>
+                            <span class="result-score">
+                                ${(result.score * 100).toFixed(0)}%
+                                <span class="score-bar">
+                                    <span class="score-fill" style="width: ${result.score * 100}%"></span>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="result-title">${escapeHtml(result.title)}</div>
+                        <div class="result-description">${escapeHtml(result.description)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            vectorResults.innerHTML = `<div class="results">${html}</div>`;
+        }
+
+        function renderKoladaResults(data, vectorIds) {
+            if (data.results.length === 0) {
+                koladaResults.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
+                return;
+            }
+
+            const html = data.results.map((result, index) => {
+                const inBoth = vectorIds.has(result.id);
+                const badge = inBoth
+                    ? '<span class="match-badge in-both">finns i båda</span>'
+                    : '<span class="match-badge unique">unik</span>';
+
+                return `
+                    <div class="result-card ${inBoth ? 'highlight' : ''}">
+                        <div class="result-header">
+                            <span>
+                                <span class="result-rank">#${index + 1}</span>
+                                <span class="result-id">${escapeHtml(result.id)}</span>
+                                ${badge}
+                            </span>
+                        </div>
+                        <div class="result-title">${escapeHtml(result.title)}</div>
+                        <div class="result-description">${escapeHtml(result.description)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            koladaResults.innerHTML = `<div class="results">${html}</div>`;
         }
 
         function escapeHtml(text) {
