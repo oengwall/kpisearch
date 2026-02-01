@@ -4,7 +4,6 @@ Semantic search for Swedish KPIs from [Kolada](https://www.kolada.se/), using ve
 
 ## Prerequisites
 
-- Python 3.14+
 - [uv](https://docs.astral.sh/uv/) package manager
 
 ## Installation
@@ -12,6 +11,8 @@ Semantic search for Swedish KPIs from [Kolada](https://www.kolada.se/), using ve
 ```bash
 uv sync
 ```
+
+This will install dependencies and download the required Python version if not already available.
 
 ## Running the application
 
