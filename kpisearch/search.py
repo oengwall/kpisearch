@@ -2,14 +2,13 @@ import numpy as np
 import polars as pl
 from sentence_transformers import SentenceTransformer
 
-from kpisearch import KPI_EMBEDDINGS_PATH, KPI_PARQUET_PATH
+from kpisearch import KPI_PARQUET_PATH
+from kpisearch.admin_config import EmbeddingModel, get_current_model, get_embeddings_path
 
-MODEL_NAME = 'KBLab/sentence-bert-swedish-cased'
 
-
-def load_model(local_only: bool = True) -> SentenceTransformer:
-    """Load the Swedish sentence transformer model."""
-    return SentenceTransformer(MODEL_NAME, local_files_only=local_only)
+def load_model(model_name: str, local_only: bool = True) -> SentenceTransformer:
+    """Load a sentence transformer model."""
+    return SentenceTransformer(model_name, local_files_only=local_only)
 
 
 def create_embeddings(model: SentenceTransformer, texts: list[str]) -> np.ndarray:
@@ -17,10 +16,16 @@ def create_embeddings(model: SentenceTransformer, texts: list[str]) -> np.ndarra
     return model.encode(texts, show_progress_bar=True)
 
 
-def build_embeddings_index() -> None:
+def build_embeddings_index(model: EmbeddingModel | None = None) -> None:
     """Build embeddings for all KPIs and save to parquet."""
-    print(f'Loading model: {MODEL_NAME}')
-    model = load_model(local_only=False)  # Allow download when building index
+    if model is None:
+        model = get_current_model()
+
+    model_name = model.value
+    embeddings_path = get_embeddings_path(model)
+
+    print(f'Loading model: {model_name}')
+    transformer = load_model(model_name, local_only=False)
 
     print(f'Loading KPIs from {KPI_PARQUET_PATH}')
     kpis = pl.read_parquet(KPI_PARQUET_PATH)
@@ -31,7 +36,7 @@ def build_embeddings_index() -> None:
     ]
 
     print(f'Creating embeddings for {len(texts)} KPIs...')
-    embeddings = create_embeddings(model, texts)
+    embeddings = create_embeddings(transformer, texts)
 
     # Store embeddings alongside KPI ids
     embeddings_df = pl.DataFrame(
@@ -41,23 +46,35 @@ def build_embeddings_index() -> None:
         }
     )
 
-    KPI_EMBEDDINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    embeddings_df.write_parquet(KPI_EMBEDDINGS_PATH)
-    print(f'Saved embeddings to {KPI_EMBEDDINGS_PATH}')
+    embeddings_path.parent.mkdir(parents=True, exist_ok=True)
+    embeddings_df.write_parquet(embeddings_path)
+    print(f'Saved embeddings to {embeddings_path}')
 
 
 class KpiSearcher:
     """Vector similarity search for KPIs."""
 
     model: SentenceTransformer
+    model_enum: EmbeddingModel
     kpis: pl.DataFrame
     embeddings: np.ndarray
     kpi_ids: list[str]
 
-    def __init__(self) -> None:
-        self.model = load_model()
+    def __init__(self, model: EmbeddingModel | None = None) -> None:
+        if model is None:
+            model = get_current_model()
+
+        self.model_enum = model
+        embeddings_path = get_embeddings_path(model)
+
+        # Build embeddings if they don't exist
+        if not embeddings_path.exists():
+            print(f'Embeddings not found for {model.value}. Building...')
+            build_embeddings_index(model)
+
+        self.model = load_model(model.value)
         self.kpis = pl.read_parquet(KPI_PARQUET_PATH)
-        embeddings_df = pl.read_parquet(KPI_EMBEDDINGS_PATH)
+        embeddings_df = pl.read_parquet(embeddings_path)
         self.embeddings = np.array(embeddings_df['embedding'].to_list())
         self.kpi_ids = embeddings_df['id'].to_list()
 
@@ -99,13 +116,20 @@ def main() -> None:
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == 'build':
-        build_embeddings_index()
+        # Optional: specify model as second argument
+        if len(sys.argv) > 2:
+            model = EmbeddingModel(sys.argv[2])
+        else:
+            model = get_current_model()
+        build_embeddings_index(model)
     else:
-        if not KPI_EMBEDDINGS_PATH.exists():
+        model = get_current_model()
+        embeddings_path = get_embeddings_path(model)
+        if not embeddings_path.exists():
             print('Embeddings not found. Building index first...')
-            build_embeddings_index()
+            build_embeddings_index(model)
 
-        searcher = KpiSearcher()
+        searcher = KpiSearcher(model)
 
         query = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else 'skolresultat'
         print(f'\nSearching for: {query}\n')

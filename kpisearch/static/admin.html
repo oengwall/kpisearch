@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Nyckeltalssökning</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        h1 {
+            color: #1a1a1a;
+            margin-bottom: 0.5rem;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1.5rem;
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .card.warning {
+            border: 2px solid #ffc107;
+            background: #fffdf5;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            color: #1a1a1a;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        input[type="password"],
+        input[type="text"].password-field {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            padding-right: 2.5rem;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: #0066cc;
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            color: #888;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .toggle-password:hover {
+            color: #555;
+        }
+
+        .toggle-password svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        button {
+            padding: 0.6rem 1.25rem;
+            font-size: 1rem;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0052a3;
+        }
+
+        button:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #666;
+        }
+
+        button.secondary:hover {
+            background: #555;
+        }
+
+        .model-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .model-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .model-item:hover {
+            background: #f0f0f0;
+        }
+
+        .model-item.current {
+            border-color: #0066cc;
+            background: #f0f7ff;
+        }
+
+        .model-radio {
+            width: 18px;
+            height: 18px;
+            accent-color: #0066cc;
+        }
+
+        .model-info {
+            flex: 1;
+        }
+
+        .model-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .model-description {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .model-id {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 0.25rem;
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .status-badge.ready {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #fee;
+            color: #c00;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .warning-text {
+            background: #fff3cd;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #0066cc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .switching-overlay {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .switching-overlay .spinner {
+            width: 40px;
+            height: 40px;
+            border-width: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .switching-overlay p {
+            margin: 0;
+            color: #666;
+        }
+
+        .switching-overlay .switching-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .header-row h2 {
+            margin: 0;
+        }
+
+        .text-button {
+            background: none;
+            color: #0066cc;
+            padding: 0;
+            font-size: 0.9rem;
+        }
+
+        .text-button:hover {
+            background: none;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">&larr; Tillbaka till sök</a>
+    <h1>Admin</h1>
+
+    <div id="message"></div>
+
+    <!-- Login form -->
+    <div id="login-section" class="card">
+        <h2>Logga in</h2>
+        <form id="login-form">
+            <div class="form-group">
+                <label for="password">Adminlösenord</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" required autocomplete="current-password">
+                    <button type="button" class="toggle-password" tabindex="-1"></button>
+                </div>
+            </div>
+            <button type="submit">Logga in</button>
+        </form>
+    </div>
+
+    <!-- Force change password -->
+    <div id="change-password-section" class="hidden">
+        <div class="card warning">
+            <h2>Byt lösenord</h2>
+            <div class="warning-text">
+                Du använder standardlösenordet. Vänligen byt till ett säkert lösenord.
+            </div>
+            <form id="change-password-form">
+                <div class="form-group">
+                    <label for="new-password">Nytt lösenord (minst 8 tecken)</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="new-password" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="toggle-password" tabindex="-1"></button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Bekräfta lösenord</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="confirm-password" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="toggle-password" tabindex="-1"></button>
+                    </div>
+                </div>
+                <button type="submit">Spara nytt lösenord</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin panel (shown after login) -->
+    <div id="admin-section" class="hidden">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+            <button class="secondary" id="logout-button" style="padding: 0.3rem 0.75rem; font-size: 0.85rem;">Logga ut</button>
+        </div>
+
+        <div class="card">
+            <h2>Embedding-modell</h2>
+            <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">
+                Välj vilken modell som ska användas för semantisk sökning. Byte av modell kan ta några minuter om embeddings behöver byggas.
+            </p>
+            <div id="models-list" class="model-list">
+                <div class="loading">Laddar modeller...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="header-row">
+                <h2>Lösenord</h2>
+            </div>
+            <form id="update-password-form">
+                <div class="form-group">
+                    <label for="current-password">Nuvarande lösenord</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="current-password" required autocomplete="current-password">
+                        <button type="button" class="toggle-password" tabindex="-1"></button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="update-new-password">Nytt lösenord (minst 8 tecken)</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="update-new-password" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="toggle-password" tabindex="-1"></button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="update-confirm-password">Bekräfta lösenord</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="update-confirm-password" required minlength="8" autocomplete="new-password">
+                        <button type="button" class="toggle-password" tabindex="-1"></button>
+                    </div>
+                </div>
+                <button type="submit">Byt lösenord</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Eye icons for password toggle
+        const eyeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>`;
+        const eyeOffIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+        </svg>`;
+
+        // Initialize password toggles
+        document.querySelectorAll('.toggle-password').forEach(btn => {
+            btn.innerHTML = eyeIcon;
+            btn.addEventListener('click', () => {
+                const input = btn.previousElementSibling;
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    input.classList.add('password-field');
+                    btn.innerHTML = eyeOffIcon;
+                } else {
+                    input.type = 'password';
+                    input.classList.remove('password-field');
+                    btn.innerHTML = eyeIcon;
+                }
+            });
+        });
+
+        const loginSection = document.getElementById('login-section');
+        const changePasswordSection = document.getElementById('change-password-section');
+        const adminSection = document.getElementById('admin-section');
+        const loginForm = document.getElementById('login-form');
+        const changePasswordForm = document.getElementById('change-password-form');
+        const updatePasswordForm = document.getElementById('update-password-form');
+        const passwordInput = document.getElementById('password');
+        const logoutButton = document.getElementById('logout-button');
+        const modelsList = document.getElementById('models-list');
+        const messageDiv = document.getElementById('message');
+
+        let adminPassword = null;
+
+        function getAuthHeader() {
+            if (!adminPassword) return {};
+            return {
+                'Authorization': 'Basic ' + btoa('admin:' + adminPassword)
+            };
+        }
+
+        function showMessage(text, isError = false) {
+            messageDiv.innerHTML = `<div class="${isError ? 'error' : 'success'}">${escapeHtml(text)}</div>`;
+            setTimeout(() => messageDiv.innerHTML = '', 5000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function loadStoredPassword() {
+            const stored = sessionStorage.getItem('adminPassword');
+            if (stored) {
+                adminPassword = stored;
+                return true;
+            }
+            return false;
+        }
+
+        function storePassword(password) {
+            adminPassword = password;
+            sessionStorage.setItem('adminPassword', password);
+        }
+
+        function clearPassword() {
+            adminPassword = null;
+            sessionStorage.removeItem('adminPassword');
+        }
+
+        function hideAllSections() {
+            loginSection.classList.add('hidden');
+            changePasswordSection.classList.add('hidden');
+            adminSection.classList.add('hidden');
+        }
+
+        // Login
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = passwordInput.value;
+
+            try {
+                const response = await fetch('/admin/status', {
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('admin:' + password)
+                    }
+                });
+
+                if (response.ok) {
+                    storePassword(password);
+                    const data = await response.json();
+                    if (data.must_change_password) {
+                        showChangePasswordScreen();
+                    } else {
+                        showAdminPanel();
+                    }
+                } else if (response.status === 401) {
+                    showMessage('Felaktigt lösenord.', true);
+                } else {
+                    showMessage('Inloggning misslyckades.', true);
+                }
+            } catch (error) {
+                showMessage('Kunde inte ansluta till servern.', true);
+            }
+        });
+
+        // Force change password
+        changePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+
+            if (newPassword !== confirmPassword) {
+                showMessage('Lösenorden matchar inte.', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/password', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeader(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_password: adminPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    storePassword(newPassword);
+                    showMessage('Lösenordet har ändrats.');
+                    showAdminPanel();
+                } else {
+                    showMessage(data.message, true);
+                }
+            } catch (error) {
+                showMessage('Kunde inte ändra lösenord.', true);
+            }
+        });
+
+        // Update password from admin panel
+        updatePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('update-new-password').value;
+            const confirmPassword = document.getElementById('update-confirm-password').value;
+
+            if (newPassword !== confirmPassword) {
+                showMessage('Lösenorden matchar inte.', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/password', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeader(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    storePassword(newPassword);
+                    showMessage('Lösenordet har ändrats.');
+                    updatePasswordForm.reset();
+                } else {
+                    showMessage(data.message, true);
+                }
+            } catch (error) {
+                showMessage('Kunde inte ändra lösenord.', true);
+            }
+        });
+
+        // Logout
+        logoutButton.addEventListener('click', () => {
+            clearPassword();
+            hideAllSections();
+            loginSection.classList.remove('hidden');
+            passwordInput.value = '';
+        });
+
+        function showChangePasswordScreen() {
+            hideAllSections();
+            changePasswordSection.classList.remove('hidden');
+        }
+
+        async function showAdminPanel() {
+            hideAllSections();
+            adminSection.classList.remove('hidden');
+            await loadModels();
+        }
+
+        async function loadModels() {
+            modelsList.innerHTML = '<div class="loading">Laddar modeller...</div>';
+
+            try {
+                const response = await fetch('/admin/models', {
+                    headers: getAuthHeader()
+                });
+
+                if (response.status === 401) {
+                    clearPassword();
+                    hideAllSections();
+                    loginSection.classList.remove('hidden');
+                    showMessage('Sessionen har gått ut. Logga in igen.', true);
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                renderModels(data);
+            } catch (error) {
+                modelsList.innerHTML = `<div class="error">Kunde inte ladda modeller: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        function renderModels(data) {
+            const html = data.models.map(model => `
+                <div class="model-item ${model.is_current ? 'current' : ''}" data-model-id="${escapeHtml(model.id)}">
+                    <input type="radio" class="model-radio" name="model" ${model.is_current ? 'checked' : ''}>
+                    <div class="model-info">
+                        <div class="model-name">${escapeHtml(model.name)}</div>
+                        <div class="model-description">${escapeHtml(model.description)}</div>
+                        <div class="model-id">${escapeHtml(model.id)}</div>
+                    </div>
+                    <span class="status-badge ${model.has_embeddings ? 'ready' : ''}">
+                        ${model.has_embeddings ? 'Klar' : 'Ej byggd'}
+                    </span>
+                </div>
+            `).join('');
+
+            modelsList.innerHTML = html;
+
+            document.querySelectorAll('.model-item').forEach(item => {
+                item.addEventListener('click', () => switchModel(item.dataset.modelId));
+            });
+        }
+
+        async function switchModel(modelId) {
+            const modelItem = document.querySelector(`.model-item[data-model-id="${modelId}"]`);
+            const needsBuild = modelItem && !modelItem.querySelector('.status-badge.ready');
+
+            modelsList.innerHTML = `
+                <div class="switching-overlay">
+                    <div class="spinner"></div>
+                    <p class="switching-title">Byter modell...</p>
+                    <p>${needsBuild ? 'Bygger embeddings, detta kan ta några minuter.' : 'Laddar ny modell.'}</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/admin/models', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeader(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ model_id: modelId })
+                });
+
+                if (response.status === 401) {
+                    clearPassword();
+                    hideAllSections();
+                    loginSection.classList.remove('hidden');
+                    showMessage('Sessionen har gått ut. Logga in igen.', true);
+                    return;
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(data.message);
+                } else {
+                    showMessage(data.message, true);
+                }
+                await loadModels();
+            } catch (error) {
+                showMessage('Kunde inte byta modell: ' + error.message, true);
+                await loadModels();
+            }
+        }
+
+        // Initialize
+        async function init() {
+            if (loadStoredPassword()) {
+                try {
+                    const response = await fetch('/admin/status', {
+                        headers: getAuthHeader()
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.must_change_password) {
+                            showChangePasswordScreen();
+                        } else {
+                            showAdminPanel();
+                        }
+                    } else {
+                        clearPassword();
+                    }
+                } catch (e) {
+                    clearPassword();
+                }
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -75,6 +75,40 @@ Search for KPIs matching a query.
 curl "http://localhost:8000/api/search?q=skolresultat&limit=5"
 ```
 
-## Model
+## Models
 
-Uses [KBLab/sentence-bert-swedish-cased](https://huggingface.co/KBLab/sentence-bert-swedish-cased) for Swedish text embeddings.
+The application supports multiple embedding models that can be switched at runtime:
+
+| Model | Description |
+|-------|-------------|
+| KBLab/sentence-bert-swedish-cased | Swedish-specific, optimized for Swedish text (default) |
+| intfloat/multilingual-e5-large | High-quality multilingual, supports 100+ languages |
+| sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | Lightweight multilingual, good speed/quality balance |
+
+## Admin
+
+Admin page available at `/admin`. Protected with HTTP Basic Auth.
+
+Default password: `change_this_now_really!`
+
+### Change admin password
+
+```bash
+# Set new password
+uv run python -m kpisearch.auth set <new-password>
+
+# Reset to default
+uv run python -m kpisearch.auth reset
+```
+
+### Admin API
+
+```bash
+# List models
+curl -u admin:password http://localhost:8000/admin/models
+
+# Switch model
+curl -u admin:password -X POST http://localhost:8000/admin/models \
+  -H "Content-Type: application/json" \
+  -d '{"model_id": "intfloat/multilingual-e5-large"}'
+```

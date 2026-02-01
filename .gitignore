@@ -13,3 +13,6 @@ wheels/
 .idea/
 .vscode/
 *.swp
+
+# Admin credentials
+data/admin_password.txt
