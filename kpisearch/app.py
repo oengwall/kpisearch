@@ -7,7 +7,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from kpisearch.admin_config import EmbeddingModel, get_current_model, get_embeddings_path, set_current_model
+from kpisearch.admin_config import (
+    EmbeddingModel,
+    get_current_model,
+    get_embeddings_path,
+    get_title_weight,
+    set_current_model,
+    set_title_weight,
+)
 from kpisearch.auth import CurrentAdmin, is_default_password, set_admin_password, verify_admin_password
 from kpisearch.search import KpiSearcher
 
@@ -47,10 +54,11 @@ def search(
     q: str = Query(..., min_length=1, description='Search query'),
     limit: int = Query(10, ge=1, le=50, description='Max results'),
     min_score: float = Query(0.4, ge=0.0, le=1.0, description='Minimum score'),
+    title_weight: float | None = Query(None, ge=0.0, le=1.0, description='Title weight (0-1), uses default if not set'),
 ) -> SearchResponse:
     """Search for KPIs matching the query."""
     assert searcher is not None
-    results_df = searcher.search(q, top_k=limit, min_score=min_score)
+    results_df = searcher.search(q, top_k=limit, min_score=min_score, title_weight=title_weight)
 
     results = [
         KpiResult(
@@ -105,6 +113,14 @@ class ChangePasswordResponse(BaseModel):
     message: str
 
 
+class TitleWeightResponse(BaseModel):
+    title_weight: float
+
+
+class SetTitleWeightRequest(BaseModel):
+    title_weight: float
+
+
 # Admin endpoints (basic auth protected)
 
 
@@ -125,6 +141,20 @@ def change_password(request: ChangePasswordRequest, _: CurrentAdmin) -> ChangePa
 
     set_admin_password(request.new_password)
     return ChangePasswordResponse(success=True, message='Lösenordet har ändrats')
+
+
+@app.get('/admin/title-weight', response_model=TitleWeightResponse)
+def get_title_weight_endpoint(_: CurrentAdmin) -> TitleWeightResponse:
+    """Get the current title weight setting."""
+    return TitleWeightResponse(title_weight=get_title_weight())
+
+
+@app.post('/admin/title-weight', response_model=TitleWeightResponse)
+def set_title_weight_endpoint(request: SetTitleWeightRequest, _: CurrentAdmin) -> TitleWeightResponse:
+    """Set the title weight for search."""
+    weight = max(0.0, min(1.0, request.title_weight))
+    set_title_weight(weight)
+    return TitleWeightResponse(title_weight=weight)
 
 
 @app.get('/admin/models', response_model=ModelsResponse)

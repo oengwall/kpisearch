@@ -293,6 +293,56 @@
             background: none;
             text-decoration: underline;
         }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .slider-container input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #e0e0e0;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #0066cc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .slider-container input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #0066cc;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .slider-value {
+            min-width: 3rem;
+            text-align: right;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -356,6 +406,21 @@
             </p>
             <div id="models-list" class="model-list">
                 <div class="loading">Laddar modeller...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Sökviktning</h2>
+            <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">
+                Justera hur mycket titel respektive beskrivning påverkar sökresultaten.
+            </p>
+            <div class="slider-container">
+                <input type="range" id="title-weight-slider" min="0" max="100" value="60">
+                <span class="slider-value" id="title-weight-value">60%</span>
+            </div>
+            <div class="slider-labels">
+                <span>Beskrivning</span>
+                <span>Titel</span>
             </div>
         </div>
 
@@ -427,6 +492,32 @@
         const logoutButton = document.getElementById('logout-button');
         const modelsList = document.getElementById('models-list');
         const messageDiv = document.getElementById('message');
+        const titleWeightSlider = document.getElementById('title-weight-slider');
+        const titleWeightValue = document.getElementById('title-weight-value');
+
+        // Title weight slider
+        let titleWeightTimeout = null;
+        titleWeightSlider.addEventListener('input', () => {
+            titleWeightValue.textContent = titleWeightSlider.value + '%';
+        });
+        titleWeightSlider.addEventListener('change', async () => {
+            clearTimeout(titleWeightTimeout);
+            titleWeightTimeout = setTimeout(async () => {
+                try {
+                    await fetch('/admin/title-weight', {
+                        method: 'POST',
+                        headers: {
+                            ...getAuthHeader(),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ title_weight: titleWeightSlider.value / 100 })
+                    });
+                    showMessage('Sökviktning sparad.');
+                } catch (error) {
+                    showMessage('Kunde inte spara sökviktning.', true);
+                }
+            }, 300);
+        });
 
         let adminPassword = null;
 
@@ -596,7 +687,23 @@
         async function showAdminPanel() {
             hideAllSections();
             adminSection.classList.remove('hidden');
-            await loadModels();
+            await Promise.all([loadModels(), loadTitleWeight()]);
+        }
+
+        async function loadTitleWeight() {
+            try {
+                const response = await fetch('/admin/title-weight', {
+                    headers: getAuthHeader()
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const percent = Math.round(data.title_weight * 100);
+                    titleWeightSlider.value = percent;
+                    titleWeightValue.textContent = percent + '%';
+                }
+            } catch (error) {
+                console.error('Could not load title weight:', error);
+            }
         }
 
         async function loadModels() {

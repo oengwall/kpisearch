@@ -39,6 +39,11 @@ class EmbeddingModel(str, Enum):
         }
         return descriptions[self]
 
+    @property
+    def uses_e5_prefix(self) -> bool:
+        """Check if this model uses E5-style query/passage prefixes."""
+        return self == EmbeddingModel.MULTILINGUAL_E5_LARGE
+
 
 def get_embeddings_path(model: EmbeddingModel) -> Path:
     """Get the embeddings file path for a specific model."""
@@ -70,4 +75,17 @@ def set_current_model(model: EmbeddingModel) -> None:
     """Set the current embedding model."""
     config = load_admin_config()
     config['current_model'] = model.value
+    save_admin_config(config)
+
+
+def get_title_weight() -> float:
+    """Get the title weight for search (0.0-1.0). Description weight is 1 - title_weight."""
+    config = load_admin_config()
+    return config.get('title_weight', 0.6)
+
+
+def set_title_weight(weight: float) -> None:
+    """Set the title weight for search."""
+    config = load_admin_config()
+    config['title_weight'] = max(0.0, min(1.0, weight))
     save_admin_config(config)
