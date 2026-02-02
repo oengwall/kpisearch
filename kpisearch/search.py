@@ -11,9 +11,9 @@ def load_model(model_name: str, local_only: bool = True) -> SentenceTransformer:
     return SentenceTransformer(model_name, local_files_only=local_only)
 
 
-def create_embeddings(model: SentenceTransformer, texts: list[str]) -> np.ndarray:
-    """Create embeddings for a list of texts."""
-    return model.encode(texts, show_progress_bar=True)
+def create_document_embeddings(model: SentenceTransformer, texts: list[str]) -> np.ndarray:
+    """Create document embeddings for a list of texts."""
+    return model.encode_document(texts, show_progress_bar=True)
 
 
 def build_embeddings_index(model: EmbeddingModel | None = None) -> None:
@@ -30,17 +30,14 @@ def build_embeddings_index(model: EmbeddingModel | None = None) -> None:
     print(f'Loading KPIs from {KPI_PARQUET_PATH}')
     kpis = pl.read_parquet(KPI_PARQUET_PATH)
 
-    # Prepare texts - add E5 prefix if needed
-    prefix = 'passage: ' if model.uses_e5_prefix else ''
-
-    titles = [f'{prefix}{row["title"]}' for row in kpis.select('title').iter_rows(named=True)]
-    descriptions = [f'{prefix}{row["description"]}' for row in kpis.select('description').iter_rows(named=True)]
+    titles = kpis['title'].to_list()
+    descriptions = kpis['description'].to_list()
 
     print(f'Creating title embeddings for {len(titles)} KPIs...')
-    title_embeddings = create_embeddings(transformer, titles).astype(np.float32)
+    title_embeddings = create_document_embeddings(transformer, titles).astype(np.float32)
 
     print(f'Creating description embeddings for {len(descriptions)} KPIs...')
-    description_embeddings = create_embeddings(transformer, descriptions).astype(np.float32)
+    description_embeddings = create_document_embeddings(transformer, descriptions).astype(np.float32)
 
     # Store embeddings alongside KPI ids (using pl.Array to preserve float32 dtype)
     embedding_dim = title_embeddings.shape[1]
@@ -114,11 +111,7 @@ class KpiSearcher:
         if title_weight is None:
             title_weight = get_title_weight()
 
-        # Add E5 prefix if needed
-        if self.model_enum.uses_e5_prefix:
-            query = f'query: {query}'
-
-        query_embedding = self.model.encode([query])[0]
+        query_embedding = self.model.encode_query([query])[0]
 
         # Compute cosine similarities for both title and description
         title_similarities = self._cosine_similarity(query_embedding, self.title_embeddings)
@@ -220,16 +213,12 @@ def update_embeddings(
         kpis = pl.read_parquet(KPI_PARQUET_PATH)
         kpis_to_embed = kpis.filter(pl.col('id').is_in(list(ids_to_update)))
 
-        prefix = 'passage: ' if model.uses_e5_prefix else ''
-
-        titles = [f'{prefix}{row["title"]}' for row in kpis_to_embed.select('title').iter_rows(named=True)]
-        descriptions = [
-            f'{prefix}{row["description"]}' for row in kpis_to_embed.select('description').iter_rows(named=True)
-        ]
+        titles = kpis_to_embed['title'].to_list()
+        descriptions = kpis_to_embed['description'].to_list()
 
         print(f'{model.display_name}: Computing embeddings for {len(titles)} KPIs...')
-        title_embeddings = create_embeddings(transformer, titles).astype(np.float32)
-        description_embeddings = create_embeddings(transformer, descriptions).astype(np.float32)
+        title_embeddings = create_document_embeddings(transformer, titles).astype(np.float32)
+        description_embeddings = create_document_embeddings(transformer, descriptions).astype(np.float32)
 
         # Create DataFrame for new embeddings
         embedding_dim = title_embeddings.shape[1]

@@ -39,12 +39,6 @@ class EmbeddingModel(str, Enum):
         }
         return descriptions[self]
 
-    @property
-    def uses_e5_prefix(self) -> bool:
-        """Check if this model uses E5-style query/passage prefixes."""
-        return self == EmbeddingModel.MULTILINGUAL_E5_SMALL
-
-
 def get_embeddings_path(model: EmbeddingModel) -> Path:
     """Get the embeddings file path for a specific model."""
     return DATA_DIR / f'embeddings_{model.key}.parquet'

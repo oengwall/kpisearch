@@ -49,13 +49,13 @@ Three embedding models available (switchable at runtime via admin):
 | Model | Dim | Notes |
 |-------|-----|-------|
 | KBLab/sentence-bert-swedish-cased | 768 | Swedish-specific (default) |
-| intfloat/multilingual-e5-small | 384 | High-quality multilingual, uses query:/passage: prefixes |
+| intfloat/multilingual-e5-small | 384 | High-quality multilingual |
 | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | 384 | Lightweight multilingual |
 
 ## Search Tuning
 
 - **Title/description weighting**: Separate embeddings, combined with configurable weight (default 60% title)
-- **E5 prefix**: Automatically adds `query:` / `passage:` prefixes for E5 model
+- **Prompt handling**: Uses `prompt_name='query'`/`'passage'` for models that support it (e.g., E5)
 - **API params**: `title_weight` (0-1) can override default per request
 
 ## Admin
@@ -75,7 +75,7 @@ Three embedding models available (switchable at runtime via admin):
 The `sync.py` module provides incremental updates:
 
 1. Fetches KPIs from Kolada API
-2. Compares with existing data using `content_hash` (MD5 of title+description)
+2. Compares with existing data using `content_hash` (SHA256 of title+description)
 3. Identifies added, changed, and deleted KPIs
 4. Updates embeddings only for changed KPIs (using locally cached models only)
 
