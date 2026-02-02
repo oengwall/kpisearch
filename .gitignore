@@ -16,3 +16,7 @@ wheels/
 
 # Admin credentials
 data/admin_password.txt
+
+# Generated data files
+data/embeddings_*.parquet
+data/admin_config.json

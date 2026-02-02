@@ -37,17 +37,20 @@ def build_embeddings_index(model: EmbeddingModel | None = None) -> None:
     descriptions = [f'{prefix}{row["description"]}' for row in kpis.select('description').iter_rows(named=True)]
 
     print(f'Creating title embeddings for {len(titles)} KPIs...')
-    title_embeddings = create_embeddings(transformer, titles)
+    title_embeddings = create_embeddings(transformer, titles).astype(np.float32)
 
     print(f'Creating description embeddings for {len(descriptions)} KPIs...')
-    description_embeddings = create_embeddings(transformer, descriptions)
+    description_embeddings = create_embeddings(transformer, descriptions).astype(np.float32)
 
-    # Store embeddings alongside KPI ids
+    # Store embeddings alongside KPI ids (using pl.Array to preserve float32 dtype)
+    embedding_dim = title_embeddings.shape[1]
     embeddings_df = pl.DataFrame(
         {
             'id': kpis['id'],
-            'title_embedding': title_embeddings.tolist(),
-            'description_embedding': description_embeddings.tolist(),
+            'title_embedding': pl.Series(title_embeddings.tolist(), dtype=pl.Array(pl.Float32, embedding_dim)),
+            'description_embedding': pl.Series(
+                description_embeddings.tolist(), dtype=pl.Array(pl.Float32, embedding_dim)
+            ),
         }
     )
 
@@ -154,16 +157,126 @@ class KpiSearcher:
         return embeddings_norm @ query_norm
 
 
+def build_all_embeddings() -> None:
+    """Build embeddings for all available models."""
+    for model in EmbeddingModel:
+        print(f'\n{"="*60}')
+        print(f'Building embeddings for: {model.display_name}')
+        print(f'{"="*60}\n')
+        build_embeddings_index(model)
+    print('\nAll embeddings built successfully.')
+
+
+def update_embeddings(
+    model: EmbeddingModel,
+    added_ids: list[str],
+    changed_ids: list[str],
+    deleted_ids: list[str],
+) -> bool:
+    """Incrementally update embeddings for a model.
+
+    Args:
+        model: The embedding model to update
+        added_ids: KPI IDs that were added
+        changed_ids: KPI IDs that were changed
+        deleted_ids: KPI IDs that were deleted
+
+    Returns:
+        True if update succeeded, False if model not cached locally
+    """
+    embeddings_path = get_embeddings_path(model)
+
+    # If no embeddings file exists, skip (user needs to run full build first)
+    if not embeddings_path.exists():
+        print(f'No embeddings found for {model.display_name}, skipping')
+        return False
+
+    # Try to load model locally (no download)
+    try:
+        transformer = load_model(model.value, local_only=True)
+    except OSError as e:
+        if 'local_files_only' in str(e) or 'does not appear to have' in str(e):
+            print(f'Model {model.display_name} not cached locally, skipping')
+            return False
+        raise
+
+    ids_to_update = set(added_ids) | set(changed_ids)
+    ids_to_remove = set(deleted_ids) | set(changed_ids)
+
+    if not ids_to_update and not ids_to_remove:
+        print(f'{model.display_name}: No changes to apply')
+        return True
+
+    # Load existing embeddings
+    embeddings_df = pl.read_parquet(embeddings_path)
+
+    # Remove deleted and changed rows
+    if ids_to_remove:
+        embeddings_df = embeddings_df.filter(~pl.col('id').is_in(list(ids_to_remove)))
+        print(f'{model.display_name}: Removed {len(ids_to_remove)} embeddings')
+
+    # Compute new embeddings for added and changed KPIs
+    if ids_to_update:
+        kpis = pl.read_parquet(KPI_PARQUET_PATH)
+        kpis_to_embed = kpis.filter(pl.col('id').is_in(list(ids_to_update)))
+
+        prefix = 'passage: ' if model.uses_e5_prefix else ''
+
+        titles = [f'{prefix}{row["title"]}' for row in kpis_to_embed.select('title').iter_rows(named=True)]
+        descriptions = [
+            f'{prefix}{row["description"]}' for row in kpis_to_embed.select('description').iter_rows(named=True)
+        ]
+
+        print(f'{model.display_name}: Computing embeddings for {len(titles)} KPIs...')
+        title_embeddings = create_embeddings(transformer, titles).astype(np.float32)
+        description_embeddings = create_embeddings(transformer, descriptions).astype(np.float32)
+
+        # Create DataFrame for new embeddings
+        embedding_dim = title_embeddings.shape[1]
+        new_embeddings_df = pl.DataFrame(
+            {
+                'id': kpis_to_embed['id'],
+                'title_embedding': pl.Series(title_embeddings.tolist(), dtype=pl.Array(pl.Float32, embedding_dim)),
+                'description_embedding': pl.Series(
+                    description_embeddings.tolist(), dtype=pl.Array(pl.Float32, embedding_dim)
+                ),
+            }
+        )
+
+        # Append new embeddings
+        embeddings_df = pl.concat([embeddings_df, new_embeddings_df])
+        print(f'{model.display_name}: Added {len(new_embeddings_df)} embeddings')
+
+    # Save updated embeddings
+    embeddings_df.write_parquet(embeddings_path)
+    print(f'{model.display_name}: Saved {len(embeddings_df)} total embeddings')
+
+    return True
+
+
+def sync_embeddings(added_ids: list[str], changed_ids: list[str], deleted_ids: list[str]) -> None:
+    """Update embeddings for all models that have cached embeddings."""
+    for model in EmbeddingModel:
+        print(f'\n--- {model.display_name} ---')
+        update_embeddings(model, added_ids, changed_ids, deleted_ids)
+
+
 def main() -> None:
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == 'build':
+    if len(sys.argv) > 1 and sys.argv[1] == 'build-all':
+        build_all_embeddings()
+    elif len(sys.argv) > 1 and sys.argv[1] == 'build':
         # Optional: specify model as second argument
         if len(sys.argv) > 2:
             model = EmbeddingModel(sys.argv[2])
         else:
             model = get_current_model()
         build_embeddings_index(model)
+    elif len(sys.argv) > 1 and sys.argv[1] == 'sync':
+        # Incremental sync - requires IDs as JSON on stdin or run via kpisearch.sync
+        print('Use `python -m kpisearch.sync` for full incremental sync.')
+        print('This command is meant to be called programmatically.')
     else:
         model = get_current_model()
         embeddings_path = get_embeddings_path(model)

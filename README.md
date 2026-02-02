@@ -26,16 +26,34 @@ Open http://localhost:8000 in your browser.
 
 ## Data pipeline
 
-Download KPIs from Kolada API:
+### Incremental sync (recommended)
+
+Sync KPIs from Kolada API and update embeddings for changed items only:
+
+```bash
+uv run python -m kpisearch.sync
+```
+
+This detects added, changed, and deleted KPIs using content hashes, and only recomputes embeddings for what changed. Uses locally cached models only (no downloads).
+
+### Full rebuild
+
+Download all KPIs from Kolada API:
 
 ```bash
 uv run python -m kpisearch.download_kpis
 ```
 
-Build the embeddings index:
+Build the embeddings index for current model:
 
 ```bash
 uv run python -m kpisearch.search build
+```
+
+Build embeddings for all models:
+
+```bash
+uv run python -m kpisearch.search build-all
 ```
 
 ## Development
@@ -82,7 +100,7 @@ The application supports multiple embedding models that can be switched at runti
 | Model | Description |
 |-------|-------------|
 | KBLab/sentence-bert-swedish-cased | Swedish-specific, optimized for Swedish text (default) |
-| intfloat/multilingual-e5-large | High-quality multilingual, supports 100+ languages |
+| intfloat/multilingual-e5-small | High-quality multilingual, supports 100+ languages |
 | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | Lightweight multilingual, good speed/quality balance |
 
 ## Admin
