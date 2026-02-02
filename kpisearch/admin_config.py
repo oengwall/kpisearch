@@ -11,7 +11,7 @@ class EmbeddingModel(str, Enum):
     """Available embedding models for KPI search."""
 
     KBLAB_SWEDISH = 'KBLab/sentence-bert-swedish-cased'
-    MULTILINGUAL_E5_LARGE = 'intfloat/multilingual-e5-large'
+    MULTILINGUAL_E5_SMALL = 'intfloat/multilingual-e5-small'
     MULTILINGUAL_MINILM = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 
     @property
@@ -24,7 +24,7 @@ class EmbeddingModel(str, Enum):
         """Get a human-readable name."""
         names = {
             self.KBLAB_SWEDISH: 'KBLab Swedish BERT',
-            self.MULTILINGUAL_E5_LARGE: 'Multilingual E5 Large',
+            self.MULTILINGUAL_E5_SMALL: 'Multilingual E5 Small',
             self.MULTILINGUAL_MINILM: 'Multilingual MiniLM',
         }
         return names[self]
@@ -34,7 +34,7 @@ class EmbeddingModel(str, Enum):
         """Get a description of the model."""
         descriptions = {
             self.KBLAB_SWEDISH: 'Swedish-specific, optimized for Swedish text',
-            self.MULTILINGUAL_E5_LARGE: 'High-quality multilingual embeddings, supports 100+ languages',
+            self.MULTILINGUAL_E5_SMALL: 'High-quality multilingual (E5), 384 dim',
             self.MULTILINGUAL_MINILM: 'Lightweight multilingual, good balance of speed/quality',
         }
         return descriptions[self]
@@ -42,7 +42,7 @@ class EmbeddingModel(str, Enum):
     @property
     def uses_e5_prefix(self) -> bool:
         """Check if this model uses E5-style query/passage prefixes."""
-        return self == EmbeddingModel.MULTILINGUAL_E5_LARGE
+        return self == EmbeddingModel.MULTILINGUAL_E5_SMALL
 
 
 def get_embeddings_path(model: EmbeddingModel) -> Path:
