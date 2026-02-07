@@ -144,12 +144,13 @@ class KpiSearcher:
         ).sort('score', descending=True)
 
     def hybrid_search(
-        self, query: str, top_k: int = 10, title_weight: float | None = None
+        self, query: str, top_k: int = 10, title_weight: float | None = None, boost: float = 0.25
     ) -> pl.DataFrame:
-        """Search by keyword filtering on title, then rank by semantic similarity.
+        """Semantic search with keyword boost for title matches.
 
-        All query words must appear as substrings in the title (case-insensitive).
-        Matching KPIs are ranked by combined title/description semantic similarity.
+        Computes semantic similarity for all KPIs, then boosts scores
+        for KPIs whose titles contain query words. The boost is proportional
+        to the fraction of query words found in the title.
         """
         if title_weight is None:
             title_weight = get_title_weight()
@@ -158,39 +159,27 @@ class KpiSearcher:
         if not words:
             return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
 
-        # Filter KPIs where all words appear in title
-        mask = pl.lit(True)
-        for word in words:
-            mask = mask & pl.col('title').str.to_lowercase().str.contains(word, literal=True)
-
-        filtered = self.kpis.filter(mask)
-
-        if filtered.is_empty():
-            return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
-
-        # Map filtered IDs to embedding indices
-        id_to_idx = {kpi_id: i for i, kpi_id in enumerate(self.kpi_ids)}
-        filtered_ids = filtered['id'].to_list()
-        indices = [id_to_idx[kpi_id] for kpi_id in filtered_ids if kpi_id in id_to_idx]
-
-        if not indices:
-            return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
-
-        indices_arr = np.array(indices)
-
-        # Compute semantic similarity only on filtered subset
+        # Compute semantic similarity for all KPIs
         query_embedding = self.model.encode_query([query])[0]
-        title_sims = self._cosine_similarity(query_embedding, self.title_embeddings[indices_arr])
-        desc_sims = self._cosine_similarity(query_embedding, self.description_embeddings[indices_arr])
+        title_sims = self._cosine_similarity(query_embedding, self.title_embeddings)
+        desc_sims = self._cosine_similarity(query_embedding, self.description_embeddings)
         scores = title_weight * title_sims + (1 - title_weight) * desc_sims
 
-        # Sort by score and take top-k
-        top_k = min(top_k, len(scores))
-        top_local = np.argsort(scores)[::-1][:top_k]
+        # Boost scores based on keyword presence in title
+        titles_lower = self.kpis['title'].str.to_lowercase()
+        match_counts = np.zeros(len(self.kpi_ids))
+        for word in words:
+            matches = titles_lower.str.contains(word, literal=True).to_numpy()
+            match_counts += matches
+        match_ratio = match_counts / len(words)
+        scores *= (1 + boost * match_ratio)
+
+        # Get top-k
+        top_indices = np.argsort(scores)[::-1][:top_k]
 
         results = [
-            {'id': self.kpi_ids[indices_arr[i]], 'score': float(scores[i])}
-            for i in top_local
+            {'id': self.kpi_ids[idx], 'score': float(scores[idx])}
+            for idx in top_indices
         ]
 
         results_df = pl.DataFrame(results)
