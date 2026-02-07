@@ -12,7 +12,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 2rem;
             background: #f5f5f5;
@@ -26,7 +26,7 @@
         .search-container {
             display: flex;
             gap: 0.5rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
         }
 
         #search-input {
@@ -63,20 +63,53 @@
             cursor: not-allowed;
         }
 
+        .method-selector {
+            display: flex;
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .method-selector label {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.9rem;
+            color: #555;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .method-selector input[type="checkbox"] {
+            accent-color: #0066cc;
+        }
+
         .comparison-container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
             gap: 1.5rem;
         }
 
-        @media (max-width: 900px) {
-            .comparison-container {
+        .comparison-container.cols-1 { grid-template-columns: 1fr; }
+        .comparison-container.cols-2 { grid-template-columns: 1fr 1fr; }
+        .comparison-container.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+        @media (max-width: 1100px) {
+            .comparison-container.cols-3 { grid-template-columns: 1fr 1fr; }
+        }
+
+        @media (max-width: 750px) {
+            .comparison-container.cols-2,
+            .comparison-container.cols-3 {
                 grid-template-columns: 1fr;
             }
         }
 
         .results-column {
             min-width: 0;
+        }
+
+        .results-column.hidden {
+            display: none;
         }
 
         .column-header {
@@ -206,7 +239,12 @@
             vertical-align: middle;
         }
 
-        .match-badge.in-both {
+        .match-badge.in-all {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .match-badge.in-other {
             background: #d4edda;
             color: #155724;
         }
@@ -233,8 +271,14 @@
         <button id="search-button">Sök</button>
     </div>
 
-    <div class="comparison-container">
-        <div class="results-column">
+    <div class="method-selector">
+        <label><input type="checkbox" id="method-semantic" checked> Semantisk</label>
+        <label><input type="checkbox" id="method-hybrid" checked> Hybrid</label>
+        <label><input type="checkbox" id="method-kolada"> Kolada API</label>
+    </div>
+
+    <div class="comparison-container cols-2" id="comparison-container">
+        <div class="results-column" id="col-semantic">
             <div class="column-header">
                 <div>
                     <div class="column-title">Vektorsökning (semantisk)</div>
@@ -243,7 +287,16 @@
             </div>
             <div id="vector-results"></div>
         </div>
-        <div class="results-column">
+        <div class="results-column" id="col-hybrid">
+            <div class="column-header">
+                <div>
+                    <div class="column-title">Hybridsökning</div>
+                    <div class="column-subtitle">Nyckelord i titel + semantisk rankning</div>
+                </div>
+            </div>
+            <div id="hybrid-results"></div>
+        </div>
+        <div class="results-column hidden" id="col-kolada">
             <div class="column-header">
                 <div>
                     <div class="column-title">Kolada API (titelsökning)</div>
@@ -257,110 +310,194 @@
     <script>
         const searchInput = document.getElementById('search-input');
         const searchButton = document.getElementById('search-button');
-        const vectorResults = document.getElementById('vector-results');
-        const koladaResults = document.getElementById('kolada-results');
+        const container = document.getElementById('comparison-container');
+
+        const methods = {
+            semantic: {
+                checkbox: document.getElementById('method-semantic'),
+                column: document.getElementById('col-semantic'),
+                resultsEl: document.getElementById('vector-results'),
+            },
+            hybrid: {
+                checkbox: document.getElementById('method-hybrid'),
+                column: document.getElementById('col-hybrid'),
+                resultsEl: document.getElementById('hybrid-results'),
+            },
+            kolada: {
+                checkbox: document.getElementById('method-kolada'),
+                column: document.getElementById('col-kolada'),
+                resultsEl: document.getElementById('kolada-results'),
+            },
+        };
+
+        const METHOD_LABELS = {
+            semantic: 'Semantisk',
+            hybrid: 'Hybrid',
+            kolada: 'Kolada',
+        };
+
+        // Persist method selection
+        function saveSelection() {
+            const sel = {};
+            for (const [key, m] of Object.entries(methods)) {
+                sel[key] = m.checkbox.checked;
+            }
+            localStorage.setItem('kpi-search-methods', JSON.stringify(sel));
+        }
+
+        function loadSelection() {
+            const saved = localStorage.getItem('kpi-search-methods');
+            if (!saved) return;
+            try {
+                const sel = JSON.parse(saved);
+                for (const [key, m] of Object.entries(methods)) {
+                    if (key in sel) m.checkbox.checked = sel[key];
+                }
+            } catch {}
+        }
+
+        function getActiveMethods() {
+            return Object.keys(methods).filter(k => methods[k].checkbox.checked);
+        }
+
+        function updateLayout() {
+            const active = getActiveMethods();
+            for (const [key, m] of Object.entries(methods)) {
+                m.column.classList.toggle('hidden', !m.checkbox.checked);
+            }
+            container.className = 'comparison-container cols-' + active.length;
+        }
+
+        // Prevent unchecking the last active method
+        for (const [key, m] of Object.entries(methods)) {
+            m.checkbox.addEventListener('change', () => {
+                const active = getActiveMethods();
+                if (active.length === 0) {
+                    m.checkbox.checked = true;
+                    return;
+                }
+                saveSelection();
+                updateLayout();
+            });
+        }
+
+        loadSelection();
+        updateLayout();
 
         async function search() {
             const query = searchInput.value.trim();
             if (!query) return;
 
+            const active = getActiveMethods();
             searchButton.disabled = true;
-            vectorResults.innerHTML = '<div class="loading">Söker...</div>';
-            koladaResults.innerHTML = '<div class="loading">Söker...</div>';
+
+            // Show loading for active methods
+            for (const key of active) {
+                methods[key].resultsEl.innerHTML = '<div class="loading">Söker...</div>';
+            }
 
             const params = new URLSearchParams({ q: query, limit: 15 });
 
-            // Fetch both in parallel
-            const [vectorResponse, koladaResponse] = await Promise.allSettled([
-                fetch(`/api/search?${params}&min_score=0.3`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-                fetch(`/api/kolada-search?${params}`).then(r => r.ok ? r.json() : Promise.reject(r.status))
-            ]);
-
-            // Get IDs from both result sets for comparison
-            const vectorIds = new Set(
-                vectorResponse.status === 'fulfilled'
-                    ? vectorResponse.value.results.map(r => r.id)
-                    : []
-            );
-            const koladaIds = new Set(
-                koladaResponse.status === 'fulfilled'
-                    ? koladaResponse.value.results.map(r => r.id)
-                    : []
-            );
-
-            // Render vector results
-            if (vectorResponse.status === 'fulfilled') {
-                renderVectorResults(vectorResponse.value, koladaIds);
-            } else {
-                vectorResults.innerHTML = `<div class="error">Fel: ${vectorResponse.reason}</div>`;
+            // Build fetch promises only for active methods
+            const fetches = {};
+            if (active.includes('semantic')) {
+                fetches.semantic = fetch(`/api/search?${params}&min_score=0.3`).then(r => r.ok ? r.json() : Promise.reject(r.status));
+            }
+            if (active.includes('hybrid')) {
+                fetches.hybrid = fetch(`/api/hybrid-search?${params}`).then(r => r.ok ? r.json() : Promise.reject(r.status));
+            }
+            if (active.includes('kolada')) {
+                fetches.kolada = fetch(`/api/kolada-search?${params}`).then(r => r.ok ? r.json() : Promise.reject(r.status));
             }
 
-            // Render Kolada results
-            if (koladaResponse.status === 'fulfilled') {
-                renderKoladaResults(koladaResponse.value, vectorIds);
-            } else {
-                koladaResults.innerHTML = `<div class="error">Fel: ${koladaResponse.reason}</div>`;
+            const keys = Object.keys(fetches);
+            const settled = await Promise.allSettled(Object.values(fetches));
+
+            // Map results by method key
+            const responses = {};
+            keys.forEach((key, i) => {
+                responses[key] = settled[i];
+            });
+
+            // Collect result ID sets per method
+            const idSets = {};
+            for (const key of active) {
+                if (responses[key] && responses[key].status === 'fulfilled') {
+                    idSets[key] = new Set(responses[key].value.results.map(r => r.id));
+                } else {
+                    idSets[key] = new Set();
+                }
+            }
+
+            // Render each active method
+            for (const key of active) {
+                if (responses[key].status === 'fulfilled') {
+                    renderResults(key, responses[key].value, idSets);
+                } else {
+                    methods[key].resultsEl.innerHTML = `<div class="error">Fel: ${responses[key].reason}</div>`;
+                }
             }
 
             searchButton.disabled = false;
         }
 
-        function renderVectorResults(data, koladaIds) {
-            if (data.results.length === 0) {
-                vectorResults.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
-                return;
+        function getBadge(id, currentMethod, idSets) {
+            const active = Object.keys(idSets);
+            if (active.length < 2) return '';
+
+            const otherMethods = active.filter(k => k !== currentMethod);
+            const presentIn = otherMethods.filter(k => idSets[k].has(id));
+
+            if (presentIn.length === otherMethods.length) {
+                // Present in all other methods
+                if (active.length === 2) {
+                    return '<span class="match-badge in-all">finns i båda</span>';
+                }
+                return '<span class="match-badge in-all">finns i alla</span>';
             }
 
-            const html = data.results.map((result, index) => {
-                const inBoth = koladaIds.has(result.id);
-                const badge = inBoth
-                    ? '<span class="match-badge in-both">finns i båda</span>'
-                    : '<span class="match-badge unique">unik</span>';
+            if (presentIn.length === 0) {
+                return '<span class="match-badge unique">unik</span>';
+            }
 
-                return `
-                    <div class="result-card ${inBoth ? 'highlight' : ''}">
-                        <div class="result-header">
-                            <span>
-                                <span class="result-rank">#${index + 1}</span>
-                                <span class="result-id">${escapeHtml(result.id)}</span>
-                                ${badge}
-                            </span>
-                            <span class="result-score">
-                                ${(result.score * 100).toFixed(0)}%
-                                <span class="score-bar">
-                                    <span class="score-fill" style="width: ${result.score * 100}%"></span>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="result-title">${escapeHtml(result.title)}</div>
-                        <div class="result-description">${escapeHtml(result.description)}</div>
-                    </div>
-                `;
-            }).join('');
-
-            vectorResults.innerHTML = `<div class="results">${html}</div>`;
+            // Present in some but not all
+            const names = presentIn.map(k => METHOD_LABELS[k]).join(' + ');
+            return `<span class="match-badge in-other">finns i ${names}</span>`;
         }
 
-        function renderKoladaResults(data, vectorIds) {
+        function renderResults(methodKey, data, idSets) {
+            const el = methods[methodKey].resultsEl;
+            const hasScore = methodKey !== 'kolada';
+
             if (data.results.length === 0) {
-                koladaResults.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
+                el.innerHTML = '<div class="no-results">Inga resultat hittades.</div>';
                 return;
             }
 
+            const active = Object.keys(idSets);
+            const otherMethods = active.filter(k => k !== methodKey);
+
             const html = data.results.map((result, index) => {
-                const inBoth = vectorIds.has(result.id);
-                const badge = inBoth
-                    ? '<span class="match-badge in-both">finns i båda</span>'
-                    : '<span class="match-badge unique">unik</span>';
+                const badge = getBadge(result.id, methodKey, idSets);
+                const inAll = otherMethods.length > 0 && otherMethods.every(k => idSets[k].has(result.id));
+
+                const scoreHtml = hasScore ? `
+                    <span class="result-score">
+                        ${(result.score * 100).toFixed(0)}%
+                        <span class="score-bar">
+                            <span class="score-fill" style="width: ${result.score * 100}%"></span>
+                        </span>
+                    </span>` : '';
 
                 return `
-                    <div class="result-card ${inBoth ? 'highlight' : ''}">
+                    <div class="result-card ${inAll ? 'highlight' : ''}">
                         <div class="result-header">
                             <span>
                                 <span class="result-rank">#${index + 1}</span>
                                 <span class="result-id">${escapeHtml(result.id)}</span>
                                 ${badge}
                             </span>
+                            ${scoreHtml}
                         </div>
                         <div class="result-title">${escapeHtml(result.title)}</div>
                         <div class="result-description">${escapeHtml(result.description)}</div>
@@ -368,7 +505,7 @@
                 `;
             }).join('');
 
-            koladaResults.innerHTML = `<div class="results">${html}</div>`;
+            el.innerHTML = `<div class="results">${html}</div>`;
         }
 
         function escapeHtml(text) {

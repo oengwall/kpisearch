@@ -143,6 +143,62 @@ class KpiSearcher:
             on='id',
         ).sort('score', descending=True)
 
+    def hybrid_search(
+        self, query: str, top_k: int = 10, title_weight: float | None = None
+    ) -> pl.DataFrame:
+        """Search by keyword filtering on title, then rank by semantic similarity.
+
+        All query words must appear as substrings in the title (case-insensitive).
+        Matching KPIs are ranked by combined title/description semantic similarity.
+        """
+        if title_weight is None:
+            title_weight = get_title_weight()
+
+        words = query.lower().split()
+        if not words:
+            return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
+
+        # Filter KPIs where all words appear in title
+        mask = pl.lit(True)
+        for word in words:
+            mask = mask & pl.col('title').str.to_lowercase().str.contains(word, literal=True)
+
+        filtered = self.kpis.filter(mask)
+
+        if filtered.is_empty():
+            return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
+
+        # Map filtered IDs to embedding indices
+        id_to_idx = {kpi_id: i for i, kpi_id in enumerate(self.kpi_ids)}
+        filtered_ids = filtered['id'].to_list()
+        indices = [id_to_idx[kpi_id] for kpi_id in filtered_ids if kpi_id in id_to_idx]
+
+        if not indices:
+            return pl.DataFrame(schema={'id': pl.Utf8, 'score': pl.Float64, 'title': pl.Utf8, 'description': pl.Utf8})
+
+        indices_arr = np.array(indices)
+
+        # Compute semantic similarity only on filtered subset
+        query_embedding = self.model.encode_query([query])[0]
+        title_sims = self._cosine_similarity(query_embedding, self.title_embeddings[indices_arr])
+        desc_sims = self._cosine_similarity(query_embedding, self.description_embeddings[indices_arr])
+        scores = title_weight * title_sims + (1 - title_weight) * desc_sims
+
+        # Sort by score and take top-k
+        top_k = min(top_k, len(scores))
+        top_local = np.argsort(scores)[::-1][:top_k]
+
+        results = [
+            {'id': self.kpi_ids[indices_arr[i]], 'score': float(scores[i])}
+            for i in top_local
+        ]
+
+        results_df = pl.DataFrame(results)
+        return results_df.join(
+            self.kpis.select('id', 'title', 'description'),
+            on='id',
+        ).sort('score', descending=True)
+
     def _cosine_similarity(self, query: np.ndarray, embeddings: np.ndarray) -> np.ndarray:
         """Compute cosine similarity between query and all embeddings."""
         query_norm = query / np.linalg.norm(query)

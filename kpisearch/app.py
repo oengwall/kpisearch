@@ -75,6 +75,29 @@ def search(
     return SearchResponse(query=q, results=results)
 
 
+@app.get('/api/hybrid-search', response_model=SearchResponse)
+def hybrid_search(
+    q: str = Query(..., min_length=1, description='Search query'),
+    limit: int = Query(10, ge=1, le=50, description='Max results'),
+    title_weight: float | None = Query(None, ge=0.0, le=1.0, description='Title weight (0-1), uses default if not set'),
+) -> SearchResponse:
+    """Hybrid search: keyword filter on title + semantic ranking."""
+    assert searcher is not None
+    results_df = searcher.hybrid_search(q, top_k=limit, title_weight=title_weight)
+
+    results = [
+        KpiResult(
+            id=row['id'],
+            score=row['score'],
+            title=row['title'],
+            description=row['description'],
+        )
+        for row in results_df.iter_rows(named=True)
+    ]
+
+    return SearchResponse(query=q, results=results)
+
+
 class KoladaKpiResult(BaseModel):
     id: str
     title: str
