@@ -165,22 +165,29 @@ class KpiSearcher:
         desc_sims = self._cosine_similarity(query_embedding, self.description_embeddings)
         scores = title_weight * title_sims + (1 - title_weight) * desc_sims
 
-        # Boost scores based on keyword presence in title
+        # Keyword boost: additive, scaled by match ratio
         titles_lower = self.kpis['title'].str.to_lowercase()
         match_counts = np.zeros(len(self.kpi_ids))
         for word in words:
             matches = titles_lower.str.contains(word, literal=True).to_numpy()
             match_counts += matches
         match_ratio = match_counts / len(words)
-        scores *= (1 + boost * match_ratio)
+
+        # Favor shorter titles: query words cover more of a short title
+        title_lengths = self.kpis['title'].str.len_chars().to_numpy().astype(float)
+        query_len = sum(len(w) for w in words)
+        brevity = np.clip(query_len / np.maximum(title_lengths, 1), 0, 1)
+        keyword_boost = match_ratio * (1 + 0.5 * brevity)
+
+        # Favor standard KPIs (id starts with N) — applies to total score
+        is_standard = np.array([kpi_id.startswith('N') for kpi_id in self.kpi_ids], dtype=float)
+
+        scores = (scores + boost * keyword_boost) * (1 + 0.15 * is_standard)
 
         # Get top-k
         top_indices = np.argsort(scores)[::-1][:top_k]
 
-        results = [
-            {'id': self.kpi_ids[idx], 'score': float(scores[idx])}
-            for idx in top_indices
-        ]
+        results = [{'id': self.kpi_ids[idx], 'score': float(scores[idx])} for idx in top_indices]
 
         results_df = pl.DataFrame(results)
         return results_df.join(
@@ -198,9 +205,9 @@ class KpiSearcher:
 def build_all_embeddings() -> None:
     """Build embeddings for all available models."""
     for model in EmbeddingModel:
-        print(f'\n{"="*60}')
+        print(f'\n{"=" * 60}')
         print(f'Building embeddings for: {model.display_name}')
-        print(f'{"="*60}\n')
+        print(f'{"=" * 60}\n')
         build_embeddings_index(model)
     print('\nAll embeddings built successfully.')
 
