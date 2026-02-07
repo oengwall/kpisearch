@@ -40,6 +40,9 @@ uv run python -m kpisearch.sync                # Incremental sync (KPIs + embedd
 uv run python -m kpisearch.search build-all    # Full rebuild all model embeddings
 uv run python -m kpisearch.search build        # Full rebuild current model embeddings
 uv run python -m kpisearch.auth set <pw>       # Set admin password
+uv run ruff check                              # Lint
+uv run ruff format                             # Format
+uv run ty check                                # Type check
 ```
 
 ## Models
